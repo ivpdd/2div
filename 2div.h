@@ -38,11 +38,16 @@ typedef struct {
 
 typedef struct {
 	Vector2 pos;
+	Vector2 size;
+	Vector2 vel;
+	int rotvel;
 	int rot;
 	int mass;
-	bool dynamic;//if dynamic is false then body wont fall or move in anyway, it will interact with other bodies though
+	bool dynamic;//if dynamic is false then body wont fall or move in anyway,it will interact with other bodies though
 	cpBody *body;
 } Body;
+
+
 
 #define ROT_X(x,y,cx,cy,c,s) ((int)(cx + ((x)-cx)*(c) - ((y)-cy)*(s)))
 #define ROT_Y(x,y,cx,cy,c,s) ((int)(cy + ((x)-cx)*(s) + ((y)-cy)*(c)))
@@ -66,24 +71,31 @@ L - load - functions that load then return something
 void divinit() {
 	glfwInit();
 	glfwSwapInterval(1);
-	ma_engine_init(NULL, &engine);
+	ma_engine_init(NULL,&engine);
 	space = cpSpaceNew();
-	cpSpaceSetGravity(space, cpv(0,200));
+	cpSpaceSetGravity(space,cpv(0,200));
 }
 
 void divstop() {
 	glfwTerminate();
 	ma_engine_uninit(&engine);
+	cpSpaceFree(space);
 }
 
-divwin divwincreate(int w,int h,const char* title,bool decorated) {
-	glfwWindowHint(GLFW_DECORATED, decorated);
-	divwin window = glfwCreateWindow(w, h, title, NULL, NULL);
+divwin divwincreate(int w,int h,const char* title,bool decorated,bool transparency,bool fullscreen) {
+	glfwWindowHint(GLFW_DECORATED,decorated);
+	glfwWindowHint(GLFW_TRANSPARENT_FRAMEBUFFER,transparency);
+	divwin window;
+	if (fullscreen) {
+		window = glfwCreateWindow(w,h,title,glfwGetPrimaryMonitor(),NULL);
+	} else {
+		window = glfwCreateWindow(w,h,title,NULL,NULL);
+	}
 	if (!window) {
 		return NULL;
 	}
 	glfwMakeContextCurrent(window);
-	fs = glfonsCreate(512, 512, FONS_ZERO_TOPLEFT);
+	fs = glfonsCreate(512,512,FONS_ZERO_TOPLEFT);
 	return window;
 }
 
@@ -116,6 +128,7 @@ void divwinupdate(divwin window) {
 	for (int i = 0; i < bodyCount; i++) {
 		cpVect p = cpBodyGetPosition(bodies[i].body);
 		cpVect r = cpBodyGetRotation(bodies[i].body);
+		//printf("n: %d x: %d y: %d \n",i,(int)p.x,(int)p.y);
 		bodies[i].pos.x = p.x;
 		bodies[i].pos.y = p.y;
 		bodies[i].rot = (int)(atan2f(r.y,r.x) * (180.0 / M_PI));
@@ -131,15 +144,15 @@ void divwinupdate(divwin window) {
 void divdrawrect(divwin window,Vector2 pos,Vector2 size,RGBA color,int rotation) {
 	glfwMakeContextCurrent(window);
 	glColor4ub(color.r,color.g,color.b,color.a);
-	float cx = pos.x + size.x/2.f, cy = pos.y + size.y/2.f;
+	float cx = pos.x + size.x/2.f,cy = pos.y + size.y/2.f;
 	float r = rotation * M_PI/180.f;
 	float c = cosf(r);
 	float s = sinf(r);
 	glBegin(GL_QUADS);
 	//really scrambled code TODO: unscramble it somehow and make it readable
 	glVertex2i(ROT_X(pos.x,pos.y,cx,cy,c,s),ROT_Y(pos.x,pos.y,cx,cy,c,s));
-	glVertex2i(ROT_X(pos.x + size.x,pos.y,cx,cy,c,s),ROT_Y(pos.x + size.x, pos.y,cx,cy,c,s));
-	glVertex2i(ROT_X(pos.x + size.x,pos.y + size.y,cx, cy,c,s),ROT_Y(pos.x + size.x,pos.y + size.y,cx,cy,c,s));
+	glVertex2i(ROT_X(pos.x + size.x,pos.y,cx,cy,c,s),ROT_Y(pos.x + size.x,pos.y,cx,cy,c,s));
+	glVertex2i(ROT_X(pos.x + size.x,pos.y + size.y,cx,cy,c,s),ROT_Y(pos.x + size.x,pos.y + size.y,cx,cy,c,s));
 	glVertex2i(ROT_X(pos.x,pos.y + size.y,cx,cy,c,s),ROT_Y(pos.x,pos.y + size.y,cx,cy,c,s));
 	glEnd();
 }
@@ -176,14 +189,14 @@ void divdrawcircle(divwin window,
 
 	glfwMakeContextCurrent(window);
 	glColor4ub(color.r,color.g,color.b,color.a);
-	float cx = pos.x + size.x/2.f, cy = pos.y + size.y/2.f;
-	float rx = size.x/2.f, ry = size.y/2.f;
+	float cx = pos.x + size.x/2.f,cy = pos.y + size.y/2.f;
+	float rx = size.x/2.f,ry = size.y/2.f;
 	float r = rotation * M_PI/180.f;
 	float c = cosf(r);
 	float s = sinf(r);
 	glBegin(GL_TRIANGLE_FAN);
-	if (img != 0) {glTexCoord2f(0.5f, 0.5f);}
-	glVertex3i((int)cx, (int)cy, 0);
+	if (img != 0) {glTexCoord2f(0.5f,0.5f);}
+	glVertex3i((int)cx,(int)cy,0);
 	//TODO: unscramble this
 	for (int i = 0; i <= segments; i++) {
 		float phi = 2.f * M_PI * i / segments;
@@ -191,7 +204,7 @@ void divdrawcircle(divwin window,
 		if (img != 0) {
 			glTexCoord2f(0.5f + 0.5f*cosf(phi),0.5f + 0.5f*sinf(phi));
 		}
-		glVertex3i(ROT_X(x,y,cx,cy,c,s),ROT_Y(x,y,cx,cy,c,s), 0);
+		glVertex3i(ROT_X(x,y,cx,cy,c,s),ROT_Y(x,y,cx,cy,c,s),0);
 	}
 	glEnd();
 	if (img != 0) {
@@ -215,7 +228,7 @@ void divdrawtext(divwin window,char *text,Vector2 pos,int size,
 
 	glfwMakeContextCurrent(window);
 	glEnable(GL_BLEND);
-	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+	glBlendFunc(GL_SRC_ALPHA,GL_ONE_MINUS_SRC_ALPHA);
 	fonsSetFont(fs,font);
 	fonsSetSize(fs,(float)size);
 	fonsSetColor(fs,glfonsRGBA(color.r,color.g,color.b,color.a));
@@ -224,7 +237,7 @@ void divdrawtext(divwin window,char *text,Vector2 pos,int size,
 
 void divdrawpic(divwin window,divpic tex,
 	Vector2 pos,Vector2 size,
-	RGBA color, int rotation) {
+	RGBA color,int rotation) {
 
 	glfwMakeContextCurrent(window);
 	glEnable(GL_TEXTURE_2D);
@@ -234,18 +247,18 @@ void divdrawpic(divwin window,divpic tex,
 	glBindTexture(GL_TEXTURE_2D,tex);
 	glBegin(GL_QUADS);
 	//same here
-	float cx = pos.x + size.x/2.f, cy = pos.y + size.y/2.f;
+	float cx = pos.x + size.x/2.f,cy = pos.y + size.y/2.f;
 	float r = rotation * M_PI/180.f;
 	float c = cosf(r);
 	float s = sinf(r);
 	glTexCoord2i(0,1);
 	glVertex2i(ROT_X(pos.x,pos.y,cx,cy,c,s),ROT_Y(pos.x,pos.y,cx,cy,c,s));
 	glTexCoord2i(1,1);
-	glVertex2i(ROT_X(pos.x + size.x,pos.y,cx,cy,c,s),ROT_Y(pos.x + size.x, pos.y,cx,cy,c,s));
+	glVertex2i(ROT_X(pos.x + size.x,pos.y,cx,cy,c,s),ROT_Y(pos.x + size.x,pos.y,cx,cy,c,s));
 	glTexCoord2i(1,0);
-	glVertex2i(ROT_X(pos.x + size.x,pos.y + size.y,cx, cy,c,s),ROT_Y(pos.x + size.x,pos.y + size.y,cx,cy,c,s));
+	glVertex2i(ROT_X(pos.x + size.x,pos.y + size.y,cx,cy,c,s),ROT_Y(pos.x + size.x,pos.y + size.y,cx,cy,c,s));
 	glTexCoord2i(0,0);
-	glVertex2i(ROT_X(pos.x,pos.y + size.y,cx,cy,c,s),ROT_Y(pos.x,pos.y + size.y, cx,cy,c,s));
+	glVertex2i(ROT_X(pos.x,pos.y + size.y,cx,cy,c,s),ROT_Y(pos.x,pos.y + size.y,cx,cy,c,s));
 
 	glEnd();
 	glDisable(GL_TEXTURE_2D);
@@ -263,28 +276,70 @@ void divwinchangesize(divwin window,Vector2 size) {
 	glfwSetWindowSize(window,size.x,size.y);
 }
 
-Body* divphysaddbody(Vector2 pos, Vector2 size, int rot, int mass, bool dynamic) {
+void divwinchangeopacity(divwin window,double opacity) {
+	glfwSetWindowOpacity(window,(float)opacity);
+}
+
+Body* divphysaddbodybox(Vector2 pos,Vector2 size,int rot,int mass,bool dynamic) {
 	Body *b = &bodies[bodyCount++];
 	b->pos = pos;
+	b->size = size;
 	b->mass = mass;
 	b->dynamic = dynamic;
 	b->rot = rot;
+	cpFloat m,i;
+	if (dynamic) {
+		m = (cpFloat)mass;
+		i = cpMomentForBox(m,size.x,size.y);
+	} else {
+		m = 0.0f;
+		i = INFINITY;
+	}
 
-	cpFloat m = dynamic ? (cpFloat)mass : 0;
-	cpFloat i = dynamic ? cpMomentForBox(m, size.x, size.y) : INFINITY;
+	b->body = cpBodyNew(m,i);
 
-	b->body = cpBodyNew(m, i);
+	if (!dynamic) cpBodySetType(b->body,CP_BODY_TYPE_STATIC);
 
-	if (!dynamic) cpBodySetType(b->body, CP_BODY_TYPE_STATIC);
-
-	cpBodySetPosition(b->body, cpv(pos.x, pos.y));
-	cpBodySetAngle(b->body, rot * (M_PI / 180.0));
-	cpSpaceAddBody(space, b->body);
-
-	cpShape *shape = cpBoxShapeNew(b->body, size.x, size.y, 0.0f);
-	cpSpaceAddShape(space, shape);
+	cpBodySetPosition(b->body,cpv(pos.x,pos.y));
+	cpBodySetAngle(b->body,rot * (M_PI / 180.0));
+	cpSpaceAddBody(space,b->body);
+	cpShape *physshape = cpBoxShapeNew(b->body,size.x,size.y,0.0f);
+	cpSpaceAddShape(space,physshape);
 
 	return b;
+}
+
+Body* divphysaddbodycircle(Vector2 pos,int radius,int rot,int mass,bool dynamic) {
+	Body *b = &bodies[bodyCount++];
+	b->pos = pos;
+	b->size = (Vector2){radius*2,radius*2};
+	b->mass = mass;
+	b->dynamic = dynamic;
+	b->rot = rot;
+	cpFloat m,i;
+	if (dynamic) {
+		m = (cpFloat)mass;
+		i = cpMomentForCircle(m,(cpFloat)radius,0.0f,cpvzero);
+	} else {
+		m = 0.0f;
+		i = INFINITY;
+	}
+
+	b->body = cpBodyNew(m,i);
+
+	if (!dynamic) cpBodySetType(b->body,CP_BODY_TYPE_STATIC);
+
+	cpBodySetPosition(b->body,cpv(pos.x,pos.y));
+	cpBodySetAngle(b->body,rot * (M_PI / 180.0));
+	cpSpaceAddBody(space,b->body);
+	cpShape *physshape = cpCircleShapeNew(b->body,radius,cpvzero);
+	cpSpaceAddShape(space,physshape);
+
+	return b;
+}
+
+void divphyssetgrav(Vector2 gravity) {
+	cpSpaceSetGravity(space,cpv(gravity.x,gravity.y));
 }
 
 /////\/\\//\/\\\\/\/\\\//\\/\\\\//\\\///\/\\\//\\/\\\\//\\\///\/\\\//\\/\\\\//\\\///\/\\
@@ -297,16 +352,16 @@ Vector2 divwingetcursorpos(divwin window) {
 	return (Vector2){(int)x,(int)y};
 }
 
-RGB divwingetpixel(divwin window, Vector2 pos) {
+RGB divwingetpixel(divwin window,Vector2 pos) {
 	glfwMakeContextCurrent(window);
-	int width, height;
-	glfwGetWindowSize(window, &width, &height);
+	int width,height;
+	glfwGetWindowSize(window,&width,&height);
 	int x = (int)pos.x;
 	int y = height - (int)pos.y - 1;
-	glPixelStorei(GL_PACK_ALIGNMENT, 1);
+	glPixelStorei(GL_PACK_ALIGNMENT,1);
 	unsigned char data[3] = {0};
-	glReadPixels(x, y, 1, 1, GL_RGB, GL_UNSIGNED_BYTE, data);
-	return (RGB){ data[0], data[1], data[2] };
+	glReadPixels(x,y,1,1,GL_RGB,GL_UNSIGNED_BYTE,data);
+	return (RGB){ data[0],data[1],data[2] };
 }
 
 bool divwingetkeypress(divwin window,char key) {
